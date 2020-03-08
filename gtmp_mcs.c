@@ -45,99 +45,92 @@
 */
 
 typedef struct {
-  bool parentsense;
-  bool *parentpointer;
-  bool *childpointers[2];
-  bool havechild[4];
-  bool childnotready[4];
-  bool dummy;
+        bool parentsense;
+        bool *parentpointer;
+        bool *childpointers[2];
+        bool havechild[4];
+        bool childnotready[4];
+        bool dummy;
 } treenode;
 
 treenode *nodes;
 
-int vpid_next;
-int sense_init;
 int num_procs;
+bool global_sense;
 
 
-void gtmp_init(int num_threads){
-  int i, j;
+void gtmp_init(int num_threads) {
+        num_procs = num_threads;
+        global_sense = true;
+        nodes = (treenode *) malloc(num_procs * sizeof(treenode));
 
-  num_procs = num_threads;
-  vpid_next = 0;
-  sense_init = 1;
-  nodes = (treenode *) malloc(num_procs * sizeof(treenode));
-  
-  for (i = 0; i < num_procs; i++) {
-    for (j = 0; j < 4; j++) {
-      if (4 * i + j + 1 < num_procs) {
-        nodes[i].havechild[j] = 1;
-      } else {
-        nodes[i].havechild[j] = 0;
-      }
+        for (int i = 0; i < num_procs; i++) {
+                for (int j = 0; j < 4; j++) {
+                        //    havechild[j] = true if 4 * i + j + 1 < P; otherwise false
+                        if (4 * i + j + 1 < num_procs) {
+                                nodes[i].havechild[j] = true;
+                        } else {
+                                nodes[i].havechild[j] = false;
+                        }
 
-      nodes[i].childnotready[j] = nodes[i].havechild[j];
-    }
+                        //    initially childnotready = havechild and parentsense = false
+                        nodes[i].childnotready[j] = nodes[i].havechild[j];
+                }
 
-    if (i != 0) {
-      /* FIXME: VERIFY: Implicit floor due to cast */
-      nodes[i].parentpointer = &(nodes[(i-1)/4].childnotready[(i-1) % 4]);
-    } else {
-      nodes[i].parentpointer = &(nodes[i].dummy);
-    }
+                //    parentpointer = &nodes[floor((i-1)/4].childnotready[(i-1) mod 4],
+                if (i > 0) {
+                        nodes[i].parentpointer = &(nodes[(i-1)/4].childnotready[(i-1)%4]);
+                } else {
+                        nodes[i].parentpointer = &(nodes[i].dummy);
+                }
 
-    if (2 * i + 1 < num_procs) {
-      nodes[i].childpointers[0] = &(nodes[2*i+1].parentsense);
-    } else {
-      nodes[i].childpointers[0] = &(nodes[i].dummy);
-    }
+                //    childpointers[0] = &nodes[2*i+1].parentsense, or &dummy if 2*i+1 >= P
+                if (2 * i + 1 < num_procs) {
+                        nodes[i].childpointers[0] = &(nodes[2*i+1].parentsense);
+                } else {
+                        nodes[i].childpointers[0] = &(nodes[i].dummy);
+                }
 
-    if (2 * i + 2 < num_procs) {
-      nodes[i].childpointers[1] = &(nodes[2*i+2].parentsense);
-    } else {
-      nodes[i].childpointers[1] = &(nodes[i].dummy);
-    }
+                //    childpointers[1] = &nodes[2*i+2].parentsense, or &dummy if 2*i+2 >= P
+                if (2 * i + 2 < num_procs) {
+                        nodes[i].childpointers[1] = &(nodes[2*i+2].parentsense);
+                } else {
+                        nodes[i].childpointers[1] = &(nodes[i].dummy);
+                }
 
-    nodes[i].parentsense = 0;
-  }
+                //    initially childnotready = havechild and parentsense = false
+                nodes[i].parentsense = false;
+        }
 }
 
-void gtmp_barrier(){
-  //FIXME: do atomic fetch and add; store vpid_next in vpid, then increment vpid_next;
-  unsigned int vpid = __sync_fetch_and_add(&vpid_next, 1) % num_procs;
-  bool sense = sense_init;
-  int i;
+void gtmp_barrier() {
+        int vpid = omp_get_thread_num();
+        bool sense = global_sense;
 
-  /* If any child is not ready, keep spinning */
-  while ((nodes[vpid].childnotready[0] | nodes[vpid].childnotready[1] | 
-          nodes[vpid].childnotready[2] | nodes[vpid].childnotready[3])) {
-    //spin!
-  }
+	//    repeat until childnotready = {false, false, false, false}
+        while ((!nodes[vpid].childnotready[0] && !nodes[vpid].childnotready[1] &&
+                                !nodes[vpid].childnotready[2] && !nodes[vpid].childnotready[3])) { }
 
-  for (i = 0; i < 4; i++) {
-    nodes[vpid].childnotready[i] = nodes[vpid].havechild[i];
-  }
+	//    childnotready := havechild //prepare for next barrier
+        for (int i = 0; i < 4; i++) {
+                nodes[vpid].childnotready[i] = nodes[vpid].havechild[i];
+        }
 
-  *(nodes[vpid].parentpointer) = 0;
+	//    parentpointer^ := false //let parent know I'm ready
+        *(nodes[vpid].parentpointer) = 0;
 
-  if (vpid != 0) {
-    //printf("%d going to wait...\n", vpid);
-    //fflush(stdout);
+        if (vpid != 0) {
+                // spinozaaa
+                // wait for sense to match
+                while (nodes[vpid].parentsense != sense) { }
+        }
 
-    while (nodes[vpid].parentsense != sense) {
-      //spin!
-    }
+        *nodes[vpid].childpointers[0] = sense;
+        *nodes[vpid].childpointers[1] = sense;
 
-    //printf("%d waking up...\n", vpid);
-    //fflush(stdout);
-  }
-
-  *nodes[vpid].childpointers[0] = sense;
-  *nodes[vpid].childpointers[1] = sense;
-
-  sense_init = !sense;
+        global_sense = !sense;
 }
 
 void gtmp_finalize(){
-  free(nodes);
+        free(nodes);
 }

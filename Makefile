@@ -10,12 +10,15 @@ MPILIBS =
 #MPICC = /opt/openmpi-1.4.3-gcc44/bin/mpicc
 MPICC = mpicc
 
-all: mpi_tournament mpi_dissemination mpi_counter mp_counter mp_mcs
+all: mpi_tournament mpi_dissemination mpi_counter mp_counter mp_mcs mp_tree
 
 mp_counter: gtmp_counter.c mp_main.c
 	$(CC) $(OMPFLAGS) -o $@ $^ $(OMPLIBS)
 
 mp_mcs: gtmp_mcs.c mp_main.c
+	$(CC) $(OMPFLAGS) -o $@ $^ $(OMPLIBS)
+
+mp_tree: gtmp_tree.c mp_main.c
 	$(CC) $(OMPFLAGS) -o $@ $^ $(OMPLIBS)
 
 mpi_counter: gtmpi_counter.c mpi_main.c
@@ -28,4 +31,4 @@ mpi_dissemination: gtmpi_dissemination.c mpi_main.c
 	$(MPICC) $(MPIFLAGS) -o $@ $^ $(MPILIBS)
 
 clean:
-	rm -rf *.o hello_openmp hello_mpi
+	rm -rf mpi_tournament mpi_dissemination mpi_counter mp_counter mp_mcs

@@ -38,11 +38,17 @@ void gtmpi_barrier(){
   // rchopra33: instead of thread sending it to everybody, all can send to 0
   // and process 0 can be the gatekeeper of the barrier
   if (vpid != 0) {
-    MPI_Send(NULL, 0, MPI_INT, 0, 1, MPI_COMM_WORLD);
+    MPI_Send(0, 0, MPI_INT, 0, 1, MPI_COMM_WORLD);
+    MPI_Recv(0, 0, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
   } else {
-        // and process 0 can receive from everyone
-          for(i = 1; i < P; i++)
-            MPI_Recv(NULL, 0, MPI_INT, i, 1, MPI_COMM_WORLD, &status);
+          // process 0 can receive from everyone
+          for(i = 1; i < P; i++) {
+            MPI_Recv(0, 0, MPI_INT, i, 1, MPI_COMM_WORLD, &status);
+          }
+          // everyone has arrived, now signal them to move forward
+          for(i = 1; i < P; i++) {
+            MPI_Send(0, 0, MPI_INT, i, 1, MPI_COMM_WORLD);
+          }
    }
 }
 
@@ -52,4 +58,3 @@ void gtmpi_finalize(){
   //  free(status_array);
   //}
 }
-
