@@ -50,8 +50,8 @@ int main(int argc, char **argv)
 
         printMessages(my_id, num_processes, 3);
 
-        MPI_Finalize();
         gtmpi_finalize();
+        MPI_Finalize();
         return 0;
 }
 

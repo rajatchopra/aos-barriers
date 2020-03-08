@@ -28,15 +28,14 @@
 	parity := 1 - parity
 */
 
-static int num_procs, num_rounds, cur_bar;
-static char sense_init, parity_init;
+int num_procs, num_rounds;
 
 int nRounds(int count) {
         int i = 0;
         if (count <= 0) { return 0; }
 
         int p = count;
-        while (p > 0) {
+        while (p > 1) {
                 p = p/2;
                 i++;
         }
@@ -48,41 +47,30 @@ int nRounds(int count) {
 }
 
 void gtmpi_init(int num_threads){
+  num_rounds = nRounds(num_threads);
+  //printf("Numrounds: %d\n", num_rounds);
   num_procs = num_threads;
-  num_rounds = nRounds(num_procs);
-  printf("Numrounds: %d\n", num_rounds);
-  sense_init = 1;
-  parity_init = 0;
-  cur_bar = 4;
 }
 
 void gtmpi_barrier(){
-  int parity = parity_init;
-  char sense = sense_init;
-  int bar = cur_bar;
   int vpid; 
-  int i, src, dst;
   MPI_Status stat;
 
   // MPI controls the IDs that we need to use
   MPI_Comm_rank(MPI_COMM_WORLD, &vpid);
 
-  for (i = 0; i < num_rounds; i++) {
-    // do MPI send here
-    dst = (vpid + (1<<i)) % num_procs;
-    MPI_Send(&sense, 1, MPI_CHAR, dst, (i + (bar * num_rounds)), MPI_COMM_WORLD);
+  for (int i = 0; i < num_rounds; i++) {
+    // send message to partner
+    int partner = (vpid + (1<<i))%num_procs;
+    // tag is deterministic for the sender and receiver in a round, 
+    // so its a function of the round number, but offset by a fixed integer so that
+    // test harness doesn't mess with it
+    MPI_Send(0, 0, MPI_CHAR, partner, (i + 4), MPI_COMM_WORLD);
 
     // do MPI recv here
-    src = ((vpid - (1<<i)) + num_procs) % num_procs;
-    MPI_Recv(&sense, 1, MPI_CHAR, src, (i + (bar * num_rounds)), MPI_COMM_WORLD, &stat);
+    partner = ((vpid - (1<<i))+num_procs)%num_procs;
+    MPI_Recv(0, 0, MPI_CHAR, partner, (i + 4), MPI_COMM_WORLD, &stat);
   }
-
-  if (parity == 1) {
-    sense_init = !sense_init;
-  }
-
-  parity_init = (parity + 1) % 2;
-  cur_bar++;
 }
 
 void gtmpi_finalize(){
