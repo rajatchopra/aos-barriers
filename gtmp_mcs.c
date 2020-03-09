@@ -117,7 +117,7 @@ void gtmp_barrier() {
         }
 
 	//    parentpointer^ := false //let parent know I'm ready
-        *(nodes[vpid].parentpointer) = 0;
+        *(nodes[vpid].parentpointer) = false;
 
         if (vpid != 0) {
                 // spinozaaa
